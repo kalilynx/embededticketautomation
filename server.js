@@ -359,7 +359,7 @@ app.post("/checkin", checkinLimiter, (req, res) => {
 });
 
 // Verify ticket (for QR code scanning)
-app.get("/verify/:ticketCode", (req, res) => {
+app.get("/verify/:ticketCode", checkinLimiter, (req, res) => {
   const { ticketCode } = req.params;
   const eventDate = currentSaturday();
 
