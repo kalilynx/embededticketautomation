@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Greek Live Music Tickets</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .ticket-card {
+      max-width: 380px;
+      width: 100%;
+      padding: 28px;
+      border-radius: 20px;
+      background: #0d0d0d;
+      color: #fff;
+      box-shadow: 0 25px 60px rgba(0,0,0,.45);
+    }
+
+    .ticket-card h2 {
+      margin: 0 0 8px;
+      font-size: 24px;
+    }
+
+    .event-date {
+      opacity: .85;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+
+    .ticket-card label {
+      font-size: 14px;
+      opacity: .8;
+      display: block;
+      margin-top: 14px;
+    }
+
+    .ticket-card input {
+      width: 100%;
+      padding: 12px;
+      margin: 6px 0 0;
+      border-radius: 10px;
+      border: none;
+      font-size: 16px;
+    }
+
+    .ticket-card button {
+      width: 100%;
+      padding: 14px;
+      background: #cfa14a;
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 20px;
+      transition: opacity 0.2s;
+    }
+
+    .ticket-card button:hover {
+      opacity: .9;
+    }
+
+    .ticket-card button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .fine-print {
+      font-size: 12px;
+      opacity: .6;
+      margin-top: 10px;
+      text-align: center;
+    }
+
+    .error {
+      background: #ff4444;
+      color: white;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 10px;
+      font-size: 14px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="ticket-card">
+    <h2>🎶 Saturday Night Greek Live Music</h2>
+    <p class="event-date" id="eventDate">Loading...</p>
+
+    <label for="email">Email Address</label>
+    <input id="email" type="email" placeholder="you@email.com" required>
+
+    <label for="quantity">Number of Tickets</label>
+    <input id="quantity" type="number" min="1" max="10" value="1">
+
+    <button onclick="buyTickets()" id="buyButton">Buy Tickets</button>
+
+    <div class="error" id="errorMessage"></div>
+
+    <p class="fine-print">
+      Tickets delivered instantly via email.
+    </p>
+  </div>
+
+  <script>
+    // Load current event details
+    async function loadEventDetails() {
+      try {
+        const res = await fetch('/current-event');
+        const event = await res.json();
+        
+        const eventDateEl = document.getElementById('eventDate');
+        const dateObj = new Date(event.event_date);
+        const formattedDate = dateObj.toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        });
+        
+        eventDateEl.innerText = `${formattedDate} • Doors 7PM • ${event.venue}`;
+      } catch (error) {
+        console.error('Error loading event:', error);
+      }
+    }
+
+    async function buyTickets() {
+      const email = document.getElementById("email").value;
+      const quantity = document.getElementById("quantity").value;
+      const errorEl = document.getElementById("errorMessage");
+      const button = document.getElementById("buyButton");
+
+      errorEl.style.display = 'none';
+
+      if (!email) {
+        errorEl.innerText = "Please enter your email address";
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      if (!quantity || quantity < 1) {
+        errorEl.innerText = "Please select at least 1 ticket";
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      button.disabled = true;
+      button.innerText = "Processing...";
+
+      try {
+        const res = await fetch("/create-checkout-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, quantity })
+        });
+
+        const data = await res.json();
+        
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error(data.error || "Failed to create checkout session");
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        errorEl.innerText = "Something went wrong. Please try again.";
+        errorEl.style.display = 'block';
+        button.disabled = false;
+        button.innerText = "Buy Tickets";
+      }
+    }
+
+    // Load event details on page load
+    loadEventDetails();
+  </script>
+</body>
+</html>

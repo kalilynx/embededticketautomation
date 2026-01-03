@@ -1,0 +1,30 @@
+{
+  "name": "embedded-ticket-automation",
+  "version": "1.0.0",
+  "description": "Automated ticket generation and validation system for live music events",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "tickets",
+    "stripe",
+    "qr-code",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "stripe": "^14.0.0",
+    "nodemailer": "^6.9.7",
+    "sqlite3": "^5.1.7",
+    "qrcode": "^1.5.4",
+    "canvas": "^2.11.2",
+    "body-parser": "^1.20.2"
+  },
+  "devDependencies": {}
+}

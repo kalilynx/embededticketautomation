@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Door Check-In Scanner</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      padding: 20px;
+    }
+
+    .scanner {
+      max-width: 500px;
+      margin: 0 auto;
+      padding: 30px;
+      background: #2a2a2a;
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.5);
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      font-size: 28px;
+    }
+
+    .mode-switch {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 10px;
+      background: #444;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .mode-btn.active {
+      background: #cfa14a;
+      color: #000;
+      font-weight: bold;
+    }
+
+    #reader {
+      width: 100%;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .manual-input {
+      margin-bottom: 20px;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: 2px solid #444;
+      background: #333;
+      color: white;
+      margin-bottom: 10px;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #cfa14a;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #cfa14a;
+      color: #000;
+      border: none;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    button:hover {
+      opacity: .9;
+    }
+
+    #result {
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      font-size: 20px;
+      font-weight: bold;
+      display: none;
+    }
+
+    .stats {
+      margin-top: 30px;
+      padding: 20px;
+      background: #333;
+      border-radius: 10px;
+    }
+
+    .stats h3 {
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    .stat-value {
+      font-weight: bold;
+      color: #cfa14a;
+    }
+  </style>
+</head>
+<body>
+  <div class="scanner">
+    <h2>🎟️ Ticket Check-In</h2>
+
+    <div class="mode-switch">
+      <button class="mode-btn active" onclick="switchMode('manual')">Manual Entry</button>
+      <button class="mode-btn" onclick="switchMode('camera')">QR Scanner</button>
+    </div>
+
+    <div id="reader"></div>
+
+    <div class="manual-input">
+      <input
+        id="ticketCode"
+        placeholder="Enter or scan ticket code"
+        autofocus
+        onkeypress="handleKeyPress(event)"
+      />
+      <button onclick="checkTicket()">Check Ticket</button>
+    </div>
+
+    <div id="result"></div>
+
+    <div class="stats">
+      <h3>Today's Stats</h3>
+      <div class="stat-row">
+        <span>Tickets Sold:</span>
+        <span class="stat-value" id="sold">-</span>
+      </div>
+      <div class="stat-row">
+        <span>Checked In:</span>
+        <span class="stat-value" id="scanned">-</span>
+      </div>
+      <div class="stat-row">
+        <span>Remaining:</span>
+        <span class="stat-value" id="remaining">-</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script>
+    let scanner = null;
+    let currentMode = 'manual';
+
+    function currentSaturday() {
+      const today = new Date();
+      const day = today.getDay();
+      const saturday = new Date(today);
+      saturday.setDate(today.getDate() + (6 - day));
+      return saturday.toISOString().split("T")[0];
+    }
+
+    async function checkTicket() {
+      const code = document.getElementById("ticketCode").value.trim().toUpperCase();
+      
+      if (!code) {
+        showResult("error", "⚠️ Please enter a ticket code");
+        return;
+      }
+
+      try {
+        const res = await fetch("/checkin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ticketCode: code,
+            eventDate: currentSaturday()
+          })
+        });
+
+        const data = await res.json();
+        
+        if (data.status === "valid") {
+          showResult("valid", "✅ ENTRY ALLOWED");
+          playSound("success");
+        } else if (data.status === "used") {
+          showResult("used", "⚠️ ALREADY CHECKED IN");
+          playSound("warning");
+        } else {
+          showResult("invalid", "❌ INVALID TICKET");
+          playSound("error");
+        }
+
+        document.getElementById("ticketCode").value = "";
+        loadStats();
+      } catch (error) {
+        console.error("Error:", error);
+        showResult("error", "❌ CONNECTION ERROR");
+      }
+    }
+
+    function showResult(status, message) {
+      const result = document.getElementById("result");
+      result.style.display = "block";
+      result.innerText = message;
+
+      if (status === "valid") {
+        result.style.background = "#2ecc71";
+        result.style.color = "#fff";
+      } else if (status === "used") {
+        result.style.background = "#f39c12";
+        result.style.color = "#000";
+      } else if (status === "invalid") {
+        result.style.background = "#e74c3c";
+        result.style.color = "#fff";
+      } else {
+        result.style.background = "#95a5a6";
+        result.style.color = "#fff";
+      }
+
+      setTimeout(() => {
+        result.style.display = "none";
+      }, 3000);
+    }
+
+    function playSound(type) {
+      // Audio feedback for scanner (optional)
+      // Can implement beep sounds here
+    }
+
+    function handleKeyPress(event) {
+      if (event.key === 'Enter') {
+        checkTicket();
+      }
+    }
+
+    async function switchMode(mode) {
+      currentMode = mode;
+      
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      
+      event.target.classList.add('active');
+
+      if (mode === 'camera') {
+        document.getElementById('reader').style.display = 'block';
+        startScanner();
+      } else {
+        document.getElementById('reader').style.display = 'none';
+        if (scanner) {
+          scanner.stop();
+        }
+      }
+    }
+
+    async function startScanner() {
+      if (scanner) {
+        await scanner.stop();
+      }
+
+      scanner = new Html5Qrcode("reader");
+
+      try {
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: 250 },
+          async (decodedText) => {
+            const code = decodedText.split("/").pop();
+            document.getElementById("ticketCode").value = code;
+            await checkTicket();
+          },
+          (errorMessage) => {
+            // Ignore scanning errors
+          }
+        );
+      } catch (err) {
+        console.error("Camera error:", err);
+        showResult("error", "❌ Camera not available");
+        switchMode('manual');
+      }
+    }
+
+    async function loadStats() {
+      try {
+        const res = await fetch(`/admin/stats?date=${currentSaturday()}`);
+        const stats = await res.json();
+        
+        document.getElementById('sold').innerText = stats.sold || 0;
+        document.getElementById('scanned').innerText = stats.scanned || 0;
+        document.getElementById('remaining').innerText = stats.remaining || 0;
+      } catch (error) {
+        console.error("Stats error:", error);
+      }
+    }
+
+    // Load stats on page load and refresh every 10 seconds
+    loadStats();
+    setInterval(loadStats, 10000);
+  </script>
+</body>
+</html>
