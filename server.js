@@ -7,6 +7,7 @@ import crypto from "crypto";
 import bodyParser from "body-parser";
 import path from "path";
 import { fileURLToPath } from "url";
+import rateLimit from "express-rate-limit";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,9 +61,6 @@ const transporter = nodemailer.createTransport({
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
-  },
-  tls: {
-    ciphers: "SSLv3"
   }
 });
 
@@ -70,6 +68,31 @@ const transporter = nodemailer.createTransport({
 app.use("/webhook", bodyParser.raw({ type: "application/json" }));
 app.use(bodyParser.json());
 app.use(express.static("public"));
+
+// Rate limiters for different endpoints
+const checkoutLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 checkout requests per window
+  message: "Too many checkout attempts, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const checkinLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 30, // Limit each IP to 30 check-in attempts per minute
+  message: "Too many check-in attempts, please slow down.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const adminLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 60, // Limit each IP to 60 admin requests per minute
+  message: "Too many requests, please slow down.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // CORS middleware for development
 app.use((req, res, next) => {
@@ -83,11 +106,15 @@ function generateTicketCode() {
   return crypto.randomBytes(6).toString("hex").toUpperCase();
 }
 
-// Helper function to get next Saturday
+// Helper function to get next Saturday (always next week's Saturday)
 function nextSaturday() {
   const d = new Date();
   const day = d.getDay();
-  d.setDate(d.getDate() + (6 - day) + (day === 6 ? 7 : 0));
+  // Calculate days until next Saturday
+  // If today is Saturday (6), add 7 days to get next Saturday
+  // Otherwise, add (6 - day) to get this week's Saturday, then add 7 for next week
+  const daysToAdd = day === 6 ? 7 : (6 - day) + 7;
+  d.setDate(d.getDate() + daysToAdd);
   return d.toISOString().split("T")[0];
 }
 
@@ -169,6 +196,14 @@ async function fulfillOrder(session) {
 
       const orderId = this.lastID;
       let tickets = [];
+      let pendingInserts = quantity;
+
+      // Function to check if all inserts are complete
+      const checkAndSendEmail = () => {
+        if (pendingInserts === 0) {
+          sendTickets(session.customer_email, tickets);
+        }
+      };
 
       for (let i = 0; i < quantity; i++) {
         const code = generateTicketCode();
@@ -181,15 +216,14 @@ async function fulfillOrder(session) {
           `INSERT INTO tickets (order_id, ticket_code, event_date) VALUES (?, ?, ?)`,
           [orderId, code, eventDate],
           (err) => {
-            if (err) console.error("❌ Ticket insert error:", err);
+            if (err) {
+              console.error("❌ Ticket insert error:", err);
+            }
+            pendingInserts--;
+            checkAndSendEmail();
           }
         );
       }
-
-      // Send tickets after a short delay to ensure DB writes complete
-      setTimeout(() => {
-        sendTickets(session.customer_email, tickets);
-      }, 500);
     }
   );
 }
@@ -219,7 +253,7 @@ app.get("/current-event", (req, res) => {
 });
 
 // Create Stripe checkout session
-app.post("/create-checkout-session", async (req, res) => {
+app.post("/create-checkout-session", checkoutLimiter, async (req, res) => {
   try {
     const { quantity, email } = req.body;
 
@@ -284,7 +318,7 @@ app.post("/webhook", async (req, res) => {
 });
 
 // Check-in endpoint
-app.post("/checkin", (req, res) => {
+app.post("/checkin", checkinLimiter, (req, res) => {
   const { ticketCode, eventDate } = req.body;
 
   if (!ticketCode) {
@@ -369,7 +403,7 @@ app.get("/verify/:ticketCode", (req, res) => {
 });
 
 // Offline tickets sync
-app.get("/offline-tickets", (req, res) => {
+app.get("/offline-tickets", adminLimiter, (req, res) => {
   const date = req.query.date || currentSaturday();
 
   db.all(
@@ -386,7 +420,7 @@ app.get("/offline-tickets", (req, res) => {
 });
 
 // Admin stats
-app.get("/admin/stats", (req, res) => {
+app.get("/admin/stats", adminLimiter, (req, res) => {
   const date = req.query.date || currentSaturday();
 
   db.get(`

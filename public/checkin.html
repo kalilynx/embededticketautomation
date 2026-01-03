@@ -138,8 +138,8 @@
     <h2>🎟️ Ticket Check-In</h2>
 
     <div class="mode-switch">
-      <button class="mode-btn active" onclick="switchMode('manual')">Manual Entry</button>
-      <button class="mode-btn" onclick="switchMode('camera')">QR Scanner</button>
+      <button class="mode-btn active" onclick="switchMode('manual', event)">Manual Entry</button>
+      <button class="mode-btn" onclick="switchMode('camera', event)">QR Scanner</button>
     </div>
 
     <div id="reader"></div>
@@ -260,14 +260,16 @@
       }
     }
 
-    async function switchMode(mode) {
+    async function switchMode(mode, event) {
       currentMode = mode;
       
       document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.classList.remove('active');
       });
       
-      event.target.classList.add('active');
+      if (event && event.target) {
+        event.target.classList.add('active');
+      }
 
       if (mode === 'camera') {
         document.getElementById('reader').style.display = 'block';
